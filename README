@@ -1,0 +1,164 @@
+CRYPTOGRAPHY LIBRARY
+
+Algorithm
+============
+
+i = 0
+k = key
+FOR each input_byte in input
+	k[i] = (k[i] + i) modulo 256
+	output_byte = input_byte xor k[i]
+	i = (i + 1) modulo length(key)
+ENDFOR
+
+Comments
+===========
+
+Dynamic cryptography library is implemented in C to get the better performance, few resources and portability.
+Apart from external provided arrays for input and output, the library is only using stack resources with no static or global variables to keep re-entrant and thread-safe conditions. 
+
+Test application could be done in other language (i.e. python), but I have prefered to do in the same way to use the same performance, few resuources and portability criteria.
+
+Extra option '-v' has been added in test application to be able to get library version (RR.VV.BB: release, version, beta).
+
+The implementation has taken into account that the code must be portable (it works at the byte level) and is prepared to be cross-compiled , if necessary, by means of CROSS_COMPILE Makefile variable.
+
+Makefiles are optimizing the generated products for size and resources.
+
+Compilation
+==============
+
+$ make
+make TARGET=libcrypto.so -C libcrypto
+make[1]: Entering directory '/home/joseignacio/NEW2/APP/libcrypto'
+gcc -Wall -g -I"./include" -Os -DVERSION=\"01.00.00\"   -c -o src/crypto.o src/crypto.c
+gcc -Wall -g -I"./include" -Os -DVERSION=\"01.00.00\" -o libcrypto.so src/crypto.o  -shared 
+mv libcrypto.so libcrypto.so.sym
+strip --strip-debug libcrypto.so.sym -o libcrypto.so
+21105373 8 -rwxr-xr-x 1 joseignacio joseignacio 7896 Mar 20 10:39 libcrypto.so
+21105372 12 -rwxr-xr-x 1 joseignacio joseignacio 10168 Mar 20 10:39 libcrypto.so.sym
+make[1]: Leaving directory '/home/joseignacio/NEW2/APP/libcrypto'
+make TARGET=fw2b LIBCRYPTO=crypto -C app
+make[1]: Entering directory '/home/joseignacio/NEW2/APP/app'
+gcc -Wall -g -I"./include" -I"../libcrypto/include" -Os   -c -o src/main.o src/main.c
+gcc -Wall -g -I"./include" -I"../libcrypto/include" -Os -o fw2b src/main.o -L"../libcrypto" -lcrypto
+mv fw2b fw2b.sym
+strip --strip-debug fw2b.sym -o fw2b
+21105378 16 -rwxr-xr-x 1 joseignacio joseignacio 13768 Mar 20 10:39 fw2b
+21105377 28 -rwxr-xr-x 1 joseignacio joseignacio 24712 Mar 20 10:39 fw2b.sym
+make[1]: Leaving directory '/home/joseignacio/NEW2/APP/app'
+ln -sf libcrypto/libcrypto.so libcrypto.so
+ln -sf app/fw2b fw2b
+
+Generated products:
+- libcrypto.so: pure shared library binary (cryptography library)
+- libcrypto.so.sym: shared library binary with symbols (cryptography library)
+- fw2b: pure binary (test application)
+- fw2b.sym: binary with symbols (test application)
+Besides, links to pure binaries are created in current path to get testing easier.
+
+Execution
+============
+
+Before executing our test application, if we do not have installed our library in a normal location, we have to configure the path where is located.
+
+$ export LD_LIBRARY_PATH=.
+$ ldd fw2b
+	linux-vdso.so.1 (0x00007ffc2a905000)
+	libcrypto.so => ./libcrypto.so (0x00007f5470522000)
+	libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f5470183000)
+	/lib64/ld-linux-x86-64.so.2 (0x00007f5470927000)
+$ ./fw2b -h
+help:
+[-h] [-v] -k <key> | -f <key_file> [-o <output_file>] [<input_file>]
+
+--help/-h                    Show this help
+--version/-v                 Show libcrypto version
+--key/-k <key>               Algorithm key for encryption
+--keyFile/-f <keyFile>       File with algorithm key for encryption
+--output/-o <output file>    Encrypted output file (if not configured stdout will be used)
+<input file>                 Input file to encrypt
+$ ./fw2b -v
+01.00.00
+
+Manual test
+================
+
+Random file for input can be generated to test:
+
+$ dd if=/dev/urandom of=inputfile bs=32768 count=1
+
+Encrypt the generated input file with any string key:
+
+$ ./fw2b -k KEYSTRING -o outputfile1 inputfile
+$ diff outputfile1 inputfile
+Binary files outputfile1 and inputfile differ
+
+As we are using a symmetrical cryptography algorithm, if we encrypt again we will get the same input file:
+$ ./fw2b -k KEYSTRING -o outputfile2 outputfile1
+$ diff outputfile2 inputfile
+$ 
+
+Random file for key can be generated to test too:
+
+$ dd if=/dev/urandom of=keyfile bs=200 count=1
+
+Repeat the test with the generated key:
+$ ./fw2b -f keyfile -o outputfile1 inputfile 
+$ diff outputfile1 inputfile
+Binary files outputfile1 and inputfile differ
+$ ./fw2b -f keyfile -o outputfile2 outputfile1
+$ diff outputfile2 inputfile
+$
+
+The same if we use standard input and output:
+$ cat inputfile | ./fw2b -f keyfile > outputfile1
+$ diff inputfile outputfile1
+Binary files inputfile and output_file differ
+$ cat outputfile1 | ./fw2b -f keyfile > outputfile2
+$ diff outputfile2 inputfile
+$ 
+
+Automatic test
+=================
+
+Robot Framework will be used for automatic testing.
+
+*Robot Framework Installation
+===============================
+
+Follow the next step to install Robot Framework tool:
+$ sudo apt install python3-pip
+$ pip3 install robotframework
+
+*Automatic Verification
+=========================
+
+We would like to test in an automatic way:
+- cryptography library version can be got and is the expected one (01.00.00). 
+- manual tests that I have commented before.
+
+Run confgured automatic test (crypto.test file) in Robot Framework:
+(Previous compilation and library path configuration are supposed)
+$ python3 -m robot crypto.robot 
+==============================================================================
+Crypto :: Crytography algorithm verfication                                   
+==============================================================================
+Version Test :: Get Cryptography library version and check.           | PASS |
+------------------------------------------------------------------------------
+Encrypt Message Test (key string) :: Encrypt message, key string i... | PASS |
+------------------------------------------------------------------------------
+Encrypt Message Test (key file) :: Encrypt message, key file is us... | PASS |
+------------------------------------------------------------------------------
+Encrypt Message Test (key file and pipes) :: Encrypt message, key ... | PASS |
+------------------------------------------------------------------------------
+Crypto :: Crytography algorithm verfication                           | PASS |
+4 tests, 4 passed, 0 failed
+==============================================================================
+Output:  output.xml
+Log:     log.html
+Report:  report.html
+
+Generated files are used to get more detailed information about the tests.
+
+This test could be triggered from configured jenkins job, everytime a version/snapshot is generated.
